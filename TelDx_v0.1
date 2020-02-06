@@ -1,0 +1,77 @@
+Zen.Application.Documents.RemoveAll(False)
+
+#####################
+#### Class Import
+#####################
+from System.IO import File, Directory, FileInfo, Path
+import os
+import time
+
+#####################
+#### Define global variables
+#####################
+ias=ZenImageAnalysisSetting()
+ias.Load("TeloGenNuc.czias")
+padding = 200
+i=0
+
+def MainProcess(image1, resultsDir):
+    ## Create EDF using Max Projection
+    processingsetting1 = Zen.Processing.Filter.Settings.EDFSetting()
+    processingsetting1.Method = ZenExtendedFocusMethod.MaximumProjection
+    singleZImage = Zen.Processing.Filter.Sharpen.EDF(image1, processingsetting1)
+    
+    ## Perform analysis of whole image and output table
+    Zen.Analyzing.Analyze(singleZImage,ias)
+    analysisTable = Zen.Analyzing.CreateRegionTable(singleZImage,"Ring Element")
+    #Zen.Application.Documents.Add(analysisTable)
+    
+    ## Filter for the Std Dev of Green in Ring Element Table
+    #intensityList = []
+    for i in range (0,analysisTable.RowCount,1):
+        ringIntensitySD = float(analysisTable.GetValue(i,4))
+        if ringIntensitySD > 450:
+            imageLeft = int(analysisTable.GetValue(i,5)) - padding
+            imageRight = int(analysisTable.GetValue(i,5)) + padding
+            imageTop = int(analysisTable.GetValue(i,6)) - padding
+            imageBottom = int(analysisTable.GetValue(i,6)) + padding
+            cropRegion = "X(" + str(imageLeft) + "-" + str(imageRight) + ")|Y(" + str(imageTop) + "-" + str(imageBottom) + ")"
+            cropImage = Zen.Processing.Utilities.CreateSubset(image1, cropRegion, False, False)
+            image1Name = str(image1.Metadata.Name)
+            newName = image1Name + "_Cell" + str(i) + (".czi")
+            PathAndFile = Path.Combine(resultsDir, newName)
+            cropImage.Save(PathAndFile)
+            #Zen.Application.Documents.Add(cropImage)
+            
+    
+#### Define Table for processing status
+table = ZenTable()
+table.Name = 'Processing File List'
+table.Columns.Add('File Name')
+table.Columns.Add('Status')
+Zen.Application.Documents.Add(table)
+
+
+####  Define folder and extract file names
+fileFolder = "C:\\Users\\cadstev\\Desktop\\SherifTest\\"
+files = Directory.GetFiles(fileFolder)
+
+### Make a new directory for the output files
+resultsDir = fileFolder + str(time.strftime('%H%M%S'))
+os.mkdir(resultsDir)
+
+### populate processing table with file names
+for i in range(0,files.Length): 
+    file = str(files[i])
+    table.SetValue(i,0,file)
+
+for i in range(0,files.Length):
+    file = str(files[i])
+    fileInfo = FileInfo(file) 
+    PathAndFile = Path.Combine(fileFolder, fileInfo.Name)
+    ## Load and display the image
+    currentImage = Zen.Application.LoadImage(PathAndFile,False)
+    #Zen.Application.Documents.Add(image1)
+    table.SetValue(i,1,"Processing")
+    MainProcess(currentImage, resultsDir)
+    table.SetValue(i,1,"Complete")
